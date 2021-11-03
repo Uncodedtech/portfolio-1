@@ -45,7 +45,7 @@
   },
   "scripts": {
     "start": "next dev",
-    "build": "next build && next export -o build/ && ",
+    "build": "next build && next export -o build/",
     "postbuild": "node bin/clean && react-snap",
     "build-api": "rimraf api && rollup -c",
     "build-storybook": "build-storybook -o build-storybook",
