@@ -5,7 +5,9 @@ const { exec } = require('child_process');
 
 const RESERVED_DIRS = ['_next', 'static'];
 const EXCLUDED_ROUTES = ['200', '404'];
+
 const BUILD_DIR = path.resolve(process.cwd(), 'build');
+const API_DIR = path.resolve(process.cwd(), 'api');
 
 /**
  * Executes a command, returning promisified stdout.
@@ -13,32 +15,63 @@ const BUILD_DIR = path.resolve(process.cwd(), 'build');
 const run = async command => new Promise(res => exec(command, res));
 
 /**
- * De-dups and optimizes HTML output.
+ * Checks whether path is a folder.
  */
-const optimizeHTML = (dir = '', routes = []) => {
+const isFolder = filePath => fs.lstatSync(filePath).isDirectory();
+
+/**
+ * Crawls through directories via a matcher, returning a list of matched files.
+ */
+const crawl = (dir, matcher, crawled = [], root = true) => {
   // Scan directory for file contents
-  const files = fs.readdirSync(path.resolve(BUILD_DIR, dir));
+  const files = fs.readdirSync(dir);
 
   // Sort through files
-  files.forEach(entry => {
-    // Delete duplicate HTML
-    const fileName = entry.replace(/\.\w+/g, '');
-    const localPath = dir ? `${dir}/${fileName}` : fileName;
+  files.forEach(file => {
+    const filePath = path.resolve(dir, file);
+    const fileName = file.replace(/\.\w+/g, '');
+    const localPath = `${dir}/${fileName}`;
 
-    if (entry.endsWith('.html') && files.includes(fileName)) {
-      fs.unlinkSync(path.resolve(BUILD_DIR, dir, entry));
-    } else if (entry.endsWith('.html') && !EXCLUDED_ROUTES.includes(localPath)) {
+    // Add matching routes to coverage
+    if (matcher.test(file) && !EXCLUDED_ROUTES.includes(fileName)) {
       const pathName = localPath.replace(/(^index|\/index)$/, '');
-      routes.push(`/${pathName}`);
+      return crawled.push(`/${pathName}`);
     }
 
     // Recursively optimize HTML in subfolders
-    if (!entry.includes('.') && !RESERVED_DIRS.includes(entry)) {
-      optimizeHTML(localPath, routes);
+    if (isFolder(filePath) && !RESERVED_DIRS.includes(file)) {
+      return crawl(localPath, matcher, crawled, false);
     }
   });
 
-  return routes;
+  // Cleanup paths
+  if (root) {
+    return crawled.map(route => route.replace(`/${dir}`, '/').replace(/\/{2,}/g, '/'));
+  }
+};
+
+/**
+ * De-dups HTML output.
+ */
+const cleanHTML = dir => {
+  // Scan directory for file contents
+  const files = fs.readdirSync(dir);
+
+  // Sort through files
+  files.forEach(file => {
+    const filePath = path.resolve(dir, file);
+    const fileName = file.replace(/\.\w+/g, '');
+
+    // Delete duplicate HTML
+    if (filePath.endsWith('.html') && files.includes(fileName)) {
+      return fs.unlinkSync(filePath);
+    }
+
+    // Recursively clean HTML in subfolders
+    if (isFolder(filePath) && !RESERVED_DIRS.includes(file)) {
+      return cleanHTML(filePath);
+    }
+  });
 };
 
 (async () => {
@@ -49,10 +82,16 @@ const optimizeHTML = (dir = '', routes = []) => {
   await run('next build');
   await run('next export -o build/');
 
+  // Build API
+  await run('rimraf api && rollup -c');
+
   // Pre-render & optimize
   await run('react-snap');
-  const routes = optimizeHTML();
+  cleanHTML(BUILD_DIR);
 
-  // Display routes
-  console.info(`\nBuilt routes:\n\n  ${routes.join('\n  ')}\n`);
+  // Display built routes
+  const apiRoutes = crawl(API_DIR, /\.js$/).map(route => `/api${route}`);
+  const buildRoutes = crawl(BUILD_DIR, /\.html$/);
+
+  console.info(`\nBuilt routes:\n\n  ${[...apiRoutes, ...buildRoutes].join('\n  ')}\n`);
 })();

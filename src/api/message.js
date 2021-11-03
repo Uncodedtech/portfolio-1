@@ -1,6 +1,6 @@
-const { JSDOM } = require('jsdom');
-const DOMPurify = require('dompurify');
-const nodemailer = require('nodemailer');
+import { JSDOM } from 'jsdom';
+import DOMPurify from 'dompurify';
+import nodemailer from 'nodemailer';
 
 const { window } = new JSDOM('');
 const { sanitize } = DOMPurify(window);
@@ -20,7 +20,7 @@ const ORIGIN = 'https://codyb.co';
 const MAX_EMAIL_LENGTH = 512;
 const MAX_MESSAGE_LENGTH = 4096;
 
-module.exports = async (req, res) => {
+const message = async (req, res) => {
   try {
     const email = sanitize(req.body.email);
     const message = sanitize(req.body.message);
@@ -61,3 +61,5 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'Message rejected' });
   }
 };
+
+export default message;
