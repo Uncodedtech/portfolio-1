@@ -2,6 +2,7 @@
 node_modules
 build
 build-storybook
+/api
 .next
 
 # Editor directories and files
